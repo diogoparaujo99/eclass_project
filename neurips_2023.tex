@@ -92,6 +92,58 @@
 %\end{abstract}
 
 
+\subsection{Greedy Neighborhood-Aware MAP from Filtering Marginals}
+
+Let $x_t \in \{0,1,\dots,N-1\}$ denote the hidden state (grid cell id) at time $t$, and let
+\[
+\boldsymbol{\pi}_t \in \mathbb{R}^N,\qquad \pi_t(i)=\Pr(x_t=i \mid o_{1:t})
+\]
+be the \emph{filtering marginal} at time $t$ (in code: \texttt{probs\_history[t-1]}).
+
+Let $A \in \mathbb{R}^{N\times N}$ be the transition matrix with entries
+$A_{ij}=\Pr(x_t=j \mid x_{t-1}=i)$.
+Define the set of valid \emph{predecessors} of a state $j$ by
+\[
+\mathcal{N}^{-}(j) \;=\; \{\, i \in \{0,\dots,N-1\} \;:\; A_{ij} > 0 \,\}.
+\]
+Equivalently, define a binary predecessor mask vector for state $j$:
+\[
+\mathbf{m}(j) \in \{0,1\}^N,\qquad m_i(j)=\mathbb{I}[A_{ij}>0].
+\]
+
+\paragraph{Objective and Motivation.}
+A full MAP estimate of the entire trajectory $\hat{x}_{1:T}$ under an HMM posterior is obtained by Viterbi decoding. Here we instead construct a \emph{greedy} path that is (i) consistent with the transition graph (grid neighborhood), and (ii) prefers states with high filtering marginals at each time. This yields an inexpensive, neighborhood-aware trajectory estimate derived from $\{\boldsymbol{\pi}_t\}_{t=1}^T$.
+
+\paragraph{Greedy Backtracking Rule.}
+We initialize the terminal state as the most probable marginal at time $T$:
+\[
+\hat{x}_T \;=\; \arg\max_{i \in \{0,\dots,N-1\}} \pi_T(i).
+\]
+Then for $t=T-1,T-2,\dots,1$ we choose the predecessor that maximizes the previous-time marginal
+among states that can transition into the already chosen successor:
+\[
+\hat{x}_t
+\;=\;
+\arg\max_{i \in \mathcal{N}^{-}(\hat{x}_{t+1})} \pi_t(i).
+\]
+In masked-vector form, this can be written as
+\[
+\hat{x}_t
+\;=\;
+\arg\max_{i \in \{0,\dots,N-1\}}
+\bigl(\pi_t(i)\, m_i(\hat{x}_{t+1})\bigr),
+\]
+i.e., an elementwise product between the marginal vector and the predecessor mask, followed by an $\arg\max$.
+
+\paragraph{Fallback (Optional).}
+If $\mathcal{N}^{-}(\hat{x}_{t+1})$ is empty (unexpected in a well-formed grid), one can fall back to the unconstrained marginal mode:
+\[
+\hat{x}_t \leftarrow \arg\max_i \pi_t(i).
+\]
+
+\paragraph{Remarks.}
+This method produces a transition-consistent trajectory while leveraging the filtering marginals. It is \emph{not} equivalent to the true MAP trajectory $\arg\max_{x_{1:T}}\Pr(x_{1:T}\mid o_{1:T})$ (which Viterbi computes), because it greedily optimizes each step under a local neighborhood constraint rather than optimizing the full sequence probability.
+
 
 \section{Problem description}\label{sec:intro}
 
