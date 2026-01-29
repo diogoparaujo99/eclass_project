@@ -84,3 +84,5 @@ envs/
 # project specific
 # you can use archive to save artifacts/notes/files you don't want to upload to github
 archive/
+results/
+figures/
