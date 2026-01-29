@@ -5,9 +5,10 @@ Self-Localization modeled as a Hidden Markov Model (HMM)
 import numpy as np
 from typing import List, Optional, Tuple
 
-def get_state_probabilities(observation: Tuple[int, int, int, int], 
+def get_state_probabilities(observation: Tuple[int, int, int, int],
 							model_info: dict,
-							observation_history: Optional[List[Tuple[int, int, int, int]]] = None, 
+							previous_state_dist: np.ndarray,
+							observation_history: Optional[List[Tuple[int, int, int, int]]] = None,
 							dummy: bool = True) -> np.ndarray:
 	'''
 	TODO: implement your own state probabilities estimation, replace the placehold return with yours
@@ -31,6 +32,9 @@ def get_state_probabilities(observation: Tuple[int, int, int, int],
 		
 		observation_history: list of past observations (tuples, same as observation)
 		
+		previous_state_dist: numpy array of shape (num_states,)
+			- previous filtered belief π_{t-1}
+		
 		dummy: use placeholder dummy probabilities, set to False when testing your own implementation
 
 	required outputs:
@@ -40,8 +44,143 @@ def get_state_probabilities(observation: Tuple[int, int, int, int],
 		return _get_dummy_probs(observation,  model_info, observation_history)
 	
 	else:
-		#return NotImplementedError('You must implement get_state_probabilities() \n You should remove/comment the `NotImplementedError` return when completed.')
-		print('Filtering')
+		num_states = model_info['num_states']
+		T = model_info['transition_matrix']
+		O = model_info['observation_matrix']
+
+		# Basic shape checks to keep the filter well-defined.
+		if previous_state_dist.shape != (num_states,):
+			raise ValueError('previous_state_dist must have shape ({},), got {}'.format(num_states, previous_state_dist.shape))
+		if T.shape != (num_states, num_states):
+			raise ValueError('transition_matrix must have shape ({}, {}), got {}'.format(num_states, num_states, T.shape))
+		if O.shape[0] != num_states:
+			raise ValueError('observation_matrix must have shape ({}, Z), got {}'.format(num_states, O.shape))
+
+		# Validate previous belief as a probability distribution.
+		if np.any(previous_state_dist < 0):
+			raise ValueError('previous_state_dist contains negative probabilities')
+		if not np.isclose(previous_state_dist.sum(), 1.0, atol=1e-6):
+			raise ValueError('previous_state_dist must sum to 1')
+
+		# Normalize and validate the observation as a 4-bit tuple.
+		if observation is None or len(observation) != 4:
+			raise ValueError('observation must be a length-4 iterable of 0/1 values (N, E, S, W)')
+		try:
+			obs_tuple = tuple(int(v) for v in observation)
+		except (TypeError, ValueError):
+			raise ValueError('observation must contain values convertible to int (0 or 1)')
+		if any(v not in (0, 1) for v in obs_tuple):
+			raise ValueError('observation values must be 0 or 1')
+
+		obs_id_lookup = model_info['obs_id_lookup']
+		if obs_tuple not in obs_id_lookup:
+			raise KeyError('observation {} not found in obs_id_lookup'.format(obs_tuple))
+
+		z = obs_id_lookup[obs_tuple]
+		emission_vec = O[:, z]
+		D = np.diag(emission_vec)
+
+		# (I) Prediction: propagate belief through the dynamics.
+		state_pred = T.T @ previous_state_dist
+		# (II) Update: apply emission likelihood for the current observation.
+		unnormalized = D @ state_pred
+		normalizer = unnormalized.sum() # compute total likelihood of observation -> same as emission_vec.T @ state_pred
+		if normalizer < 1e-12:
+			raise ValueError('Zero likelihood for observation under current model; cannot normalize belief.')
+
+		# Normalize to obtain the filtered belief.
+		state_update = unnormalized / normalizer
+		return state_update
+
+class ViterbiAlgorithm:
+	'''
+	Online Viterbi decoder (no log-probabilities).
+	Stores the forward recursion state and backtracks at the end.
+	'''
+	def __init__(self, model_info: dict, init_probs: np.ndarray):
+		# Cache model components and validate shapes.
+		self.T = model_info['transition_matrix']  # (num_states, num_states)
+		self.O = model_info['observation_matrix'] # (num_states, num_observations)
+		self.obs_id_lookup = model_info['obs_id_lookup']
+		self.state_id_to_xy = model_info['state_id_to_xy']
+		self.num_states = model_info['num_states']
+
+		# init_probs: (num_states,)
+		if init_probs.shape != (self.num_states,):
+			raise ValueError('init_probs must have shape ({},), got {}'.format(self.num_states, init_probs.shape))
+		if self.T.shape != (self.num_states, self.num_states):
+			raise ValueError('transition_matrix must have shape ({}, {}), got {}'.format(self.num_states, self.num_states, self.T.shape))
+		if self.O.shape[0] != self.num_states:
+			raise ValueError('observation_matrix must have shape ({}, Z), got {}'.format(self.num_states, self.O.shape))
+		if np.any(init_probs < 0):
+			raise ValueError('init_probs contains negative probabilities')
+
+		self.init_probs = init_probs.astype(float, copy=True)
+		self.delta_last = None          # (num_states,)
+		self.psi_history = []           # list of arrays, each (num_states,)
+		self.T_len = 0                  # number of processed observations
+
+	def _obs_to_id(self, observation: Tuple[int, int, int, int]) -> int:
+		# Normalize observation to a 4-bit tuple and map to obs_id.
+		if observation is None or len(observation) != 4:
+			raise ValueError('observation must be a length-4 iterable of 0/1 values (N, E, S, W)')
+		try:
+			obs_tuple = tuple(int(v) for v in observation)
+		except (TypeError, ValueError):
+			raise ValueError('observation must contain values convertible to int (0 or 1)')
+		if any(v not in (0, 1) for v in obs_tuple):
+			raise ValueError('observation values must be 0 or 1')
+		if obs_tuple not in self.obs_id_lookup:
+			raise KeyError('observation {} not found in obs_id_lookup'.format(obs_tuple))
+		return self.obs_id_lookup[obs_tuple]
+
+	def initialize(self, observation_0) -> None:
+		# Initialize forward recursion at t=0 with the first observation.
+		obs_id = self._obs_to_id(observation_0)
+		emission_vec = self.O[:, obs_id]      # (num_states,)
+		delta = self.init_probs * emission_vec # (num_states,)
+		# Scale to reduce underflow (does not affect argmax path).
+		max_val = delta.max()
+		if max_val > 0:
+			delta = delta / max_val
+		psi_0 = np.zeros(self.num_states, dtype=int) # (num_states,)
+
+		self.delta_last = delta               # (num_states,)
+		self.psi_history = [psi_0]            # len = 1, each (num_states,)
+		self.T_len = 1
+
+	def step(self, observation_t) -> None:
+		# One online Viterbi update for the next observation.
+		if self.delta_last is None:
+			raise ValueError('ViterbiAlgorithm must be initialized before calling step().')
+		obs_id = self._obs_to_id(observation_t)
+		emission_vec = self.O[:, obs_id]      # (num_states,)
+
+		# scores[i, j] = delta_t(i) * T[i, j]
+		scores = self.delta_last[:, None] * self.T  # (num_states, num_states)
+		psi_t = np.argmax(scores, axis=0).astype(int) # (num_states,)
+		best_prev = np.max(scores, axis=0)            # (num_states,)
+		delta_new = emission_vec * best_prev          # (num_states,)
+
+		# Scale to reduce underflow (does not affect argmax path).
+		max_val = delta_new.max()
+		if max_val > 0:
+			delta_new = delta_new / max_val
+
+		self.delta_last = delta_new           # (num_states,)
+		self.psi_history.append(psi_t)        # append (num_states,)
+		self.T_len += 1
+
+	def backtrack(self) -> List[int]:
+		# Backtrack once all observations have been processed.
+		if self.delta_last is None or self.T_len == 0:
+			raise ValueError('ViterbiAlgorithm has no history to backtrack.')
+		T_len = self.T_len
+		path = [0] * T_len                    # length T_len
+		path[T_len - 1] = int(np.argmax(self.delta_last))
+		for t in range(T_len - 2, -1, -1):
+			path[t] = int(self.psi_history[t + 1][path[t + 1]])
+		return path
 
 ## -------------------------------------------------
 

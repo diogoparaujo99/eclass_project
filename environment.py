@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 from enum import Enum
 from io import BytesIO
-from typing import List
+from typing import List, Optional
 from os import makedirs
 from itertools import product
 import matplotlib.pyplot as plt
@@ -110,7 +110,8 @@ class GridWorldEnv(gym.Env):
 
 		# initial agent location and senseor observation
 		# randomly chosen in reset() and updated in step()
-		self.agent_pos = np.array([-1, -1], dtype=np.int32)
+		self.agent_pos = np.array([-1, -1], dtype=np.int32) # (2,)
+		self.agent_pos_history = [] # List[(2,)] length T
 		self.sensor_obs = np.zeros(shape=self.observation_space.shape[0], dtype=np.int8)
 		self.all_obstacle_pos = np.zeros(shape=[self.N-1,self.N-1], dtype=np.int32)
 		self.all_free_cell_pos = None 
@@ -596,6 +597,8 @@ class GridWorldEnv(gym.Env):
 
 		# get current observation sample
 		self.sensor_obs = self.sample_observation()
+		# Initialize agent position history (t=0).
+		self.agent_pos_history = [self.agent_pos.copy()] # list length 1, each (2,)
 		
 		# get any additional ground-truth or environment data 
 		priviledged_info = self.get_priviledged_info()
@@ -616,6 +619,8 @@ class GridWorldEnv(gym.Env):
 		
 		# get any additional ground-truth or environment data 
 		priviledged_info = self.get_priviledged_info()
+		# Append agent position history after motion update.
+		self.agent_pos_history.append(self.agent_pos.copy()) # list length T, each (2,)
 
 		# this environment runs forever and has no rewards
 		terminated = False
@@ -635,14 +640,24 @@ class GridWorldEnv(gym.Env):
 		if self.render_mode == "rgb_array":
 			return self._render_frame( **kwargs)
 	
-	def _render_frame(self, state_probabilities=None, suppress_plot_display=True):
-		gridworld_render = self.render_gridworld(state_probabilities=state_probabilities)
+	def _render_frame(self, state_probabilities=None, suppress_plot_display=True,
+					  viterbi_state_ids=None, viterbi_prefix_len=None, draw_viterbi_labels=True):
+		# Render gridworld with optional Viterbi path overlay.
+		gridworld_render = self.render_gridworld(
+			state_probabilities=state_probabilities,
+			viterbi_state_ids=viterbi_state_ids,
+			viterbi_prefix_len=viterbi_prefix_len,
+			draw_viterbi_labels=draw_viterbi_labels
+		)
 		observation_render = self.render_observation()
 		frame = self.get_frame(gridworld_render, observation_render, suppress_plot_display=suppress_plot_display)
 		return frame
 	
-	def render_gridworld(self, state_probabilities=None, prob_threshold=1e-8):
-		''' create image of the gridworld with optional state_probabilities'''
+	def render_gridworld(self, state_probabilities=None, prob_threshold=1e-8,
+						 viterbi_state_ids: Optional[List[int]] = None,
+						 viterbi_prefix_len: Optional[int] = None,
+						 draw_viterbi_labels: bool = True):
+		''' create image of the gridworld with optional state probabilities and Viterbi path'''
 
 		cur_state_prob = None
 
@@ -709,6 +724,32 @@ class GridWorldEnv(gym.Env):
 					),
 				)
 
+		# draw Viterbi path if provided (state ids only).
+		viterbi_pts = None
+		if viterbi_state_ids is not None and len(viterbi_state_ids) > 0:
+			# viterbi_state_ids: list length T (num_steps), each element is a state id.
+			# Clamp prefix length if provided.
+			if viterbi_prefix_len is None:
+				prefix_len = len(viterbi_state_ids)
+			else:
+				prefix_len = max(1, min(int(viterbi_prefix_len), len(viterbi_state_ids)))
+
+			# Convert state ids to xy positions using the cached lookup.
+			viterbi_xy = [self.transition_matrix_lookup[state_id] for state_id in viterbi_state_ids[:prefix_len]] # list length prefix_len, each (2,)
+			# Convert cell coordinates to pixel centers.
+			viterbi_pts = [((pos[0] + 0.5) * pix_square_size,
+							(pos[1] + 0.5) * pix_square_size) for pos in viterbi_xy] # list length prefix_len, each (2,)
+
+		if viterbi_pts is not None and len(viterbi_pts) > 0:
+			if len(viterbi_pts) >= 2:
+				pygame.draw.lines(
+					surface=canvas,
+					color=(255, 0, 0),
+					closed=False,
+					points=viterbi_pts,
+					width=4,
+				)
+
 		# draw robot
 		pygame.draw.circle(
 			surface=canvas,
@@ -733,6 +774,25 @@ class GridWorldEnv(gym.Env):
 				end_pos=(pix_square_size * x, self.window_size),
 				width=3,
 			)
+
+		# Draw start/end labels on top of the grid for Viterbi path visibility.
+		if draw_viterbi_labels and viterbi_pts is not None and len(viterbi_pts) > 0:
+			# Initialize font subsystem if needed.
+			if not pygame.font.get_init():
+				pygame.font.init()
+			# Use a built-in font; size scales with the cell size.
+			font = pygame.font.Font(None, int(pix_square_size * 0.9))
+			s_surf = font.render("S", True, (128, 0, 0))
+			f_surf = font.render("F", True, (128, 0, 0))
+			# Flip glyphs vertically to counter the final vertical flip in the output image.
+			s_surf = pygame.transform.flip(s_surf, False, True)
+			f_surf = pygame.transform.flip(f_surf, False, True)
+			start_center = viterbi_pts[0]
+			end_center = viterbi_pts[-1]
+			s_rect = s_surf.get_rect(center=start_center)
+			f_rect = f_surf.get_rect(center=end_center)
+			canvas.blit(s_surf, s_rect)
+			canvas.blit(f_surf, f_rect)
 		# we transpose from col,row -> row,col, and then flip the y-axis to match cartesian (x,y) coordinates
 		return np.flipud(np.transpose(
 			np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)

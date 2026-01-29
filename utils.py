@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Literal
 from itertools import islice
+from PIL import Image
 
 warnings.filterwarnings('ignore')
 
@@ -18,7 +19,7 @@ from gymnasium.envs.registration import register
 # project libraries
 from config import (HTML_TEMPLATE, RunConfig, RunConfigSpec, validate_config)
 from environment import GridWorldEnv, save_gif
-from localization import get_state_probabilities
+from localization import get_state_probabilities, ViterbiAlgorithm
 
 def load_env(gridworld_dimensions=20, obstacle_ratio=0.4):
 	# we assume inputs have been validated with the config spec
@@ -86,6 +87,12 @@ def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'
 
 	obs_history = [observation]
 	probs_history = [init_probs]
+	viterbi = None
+	if not dummy:
+		# Initialize online Viterbi decoder (uses raw observation sequence).
+		viterbi = ViterbiAlgorithm(model_info=model_info, init_probs=init_probs)
+		# delta_last: (num_states,) after initialization
+		viterbi.initialize(observation)
 
 	# generate initial frame
 	frame = env.render(state_probabilities=probs_history)
@@ -99,12 +106,21 @@ def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'
 		# step environment with action and receive new observations
 		observation, _, _, _, priviledged_info = env.step(action=action)
 
+		# Preserve the raw observation for Viterbi before dummy overwrites it.
+		raw_observation = observation # (4,)
+		if not dummy:
+			# Online Viterbi update using the raw 4-bit observation.
+			viterbi.step(raw_observation)
+
 		observation = observation if not dummy else priviledged_info # used to allow dummy to work with the same API
 		
 		## ----------------------------------------
 		# TODO: implement get_state_probabilities()
+		# First filter step uses the initial distribution; after that, use last belief.
+		prev = init_probs if t == 1 else probs_history[-1]
 		probs_t = get_state_probabilities(observation=observation,
 										  model_info=model_info,
+										  previous_state_dist=prev,
 										  observation_history=obs_history,
 										  dummy=dummy)
 		
@@ -117,10 +133,14 @@ def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'
 
 		obs_history.append(observation)
 		probs_history.append(probs_t)
-
 		# generate new frame
 		frame = env.render(state_probabilities=probs_history)
 		frames.append(frame)
+
+	viterbi_state_ids = None
+	if not dummy:
+		# Backtrack once at the end to recover the most likely path.
+		viterbi_state_ids = viterbi.backtrack() # list length T (num_steps)
 
 	# save frames
 	results_save_path = path.join(results_dir, experiment_name)
@@ -133,11 +153,48 @@ def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'
 		except Exception as e:
 			print('Error saving frame {}: {}'.format(f_name, e))
 
+	if not dummy:
+		# Render and save a Viterbi-only map (no heatmap).
+		viterbi_img = env.render_gridworld(
+			state_probabilities=None,
+			viterbi_state_ids=viterbi_state_ids,
+			viterbi_prefix_len=None,
+			draw_viterbi_labels=True
+		)
+		viterbi_path = path.join(results_save_path, 'viterbi_path.png')
+		Image.fromarray(viterbi_img.astype(np.uint8)).save(viterbi_path)
+
 	# save animation for README
 	figures_save_path = 'figures'
 	makedirs(figures_save_path, exist_ok=True)
 	gif_result_save_path = path.join(figures_save_path,experiment_name+'.gif')
 	save_gif(frames, save_to_path=gif_result_save_path)
+
+	if not dummy:
+		# Use the base env to avoid wrapper attribute shadowing.
+		base_env = env.unwrapped if hasattr(env, 'unwrapped') else env
+		# base_env.agent_pos_history: list length T, each (2,)
+		# Ensure stored positions align with the number of rendered frames.
+		assert len(base_env.agent_pos_history) == len(obs_history), 'agent_pos_history length does not match obs_history'
+		# Build a second animation with Viterbi overlay on the heatmap frames.
+		frames_viterbi = []
+		for k in range(len(obs_history)):
+			# Restore simulator state for frame k.
+			base_env.agent_pos = base_env.agent_pos_history[k].copy().astype(np.int32) # (2,)
+			base_env.sensor_obs = np.array(obs_history[k], dtype=np.int8)              # (4,)
+			base_env.cur_step = k + 1
+			# Draw the Viterbi path growing with time.
+			prefix_len = k + 1
+			frame_k = env.render(
+				state_probabilities=probs_history[:k+1], # list length k+1, each (num_states,)
+				viterbi_state_ids=viterbi_state_ids,      # list length T
+				viterbi_prefix_len=prefix_len,
+				draw_viterbi_labels=True
+			)
+			frames_viterbi.append(frame_k)
+
+		viterbi_gif_path = path.join(figures_save_path, experiment_name + '_viterbi.gif')
+		save_gif(frames_viterbi, save_to_path=viterbi_gif_path)
 	return gif_result_save_path
 
 
