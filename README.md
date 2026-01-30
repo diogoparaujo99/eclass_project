@@ -2,7 +2,7 @@
 # Estimation & Classification Course Project: Localization with HMMs
 
 <p align="center">
-  <img src="figures/grid-N20__obstacles-0.3__maxsteps-100__policy-random__dummy-False.gif" width=300 style="display: inline-block; margin-right: 10px; max-width: 50%; height: auto;">
+  <img src="figures/grid-N20__obstacles-0.3__maxsteps-100__policy-random__dummy-False7.gif" width=300 style="display: inline-block; margin-right: 10px; max-width: 50%; height: auto;">
   <img src="figures/grid-N30__obstacles-0.5__maxsteps-100__policy-random__dummy-False.gif" width=300 style="display: inline-block; max-width: 50%; height: auto;">
 </p>
 
