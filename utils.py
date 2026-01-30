@@ -19,7 +19,7 @@ from gymnasium.envs.registration import register
 # project libraries
 from config import (HTML_TEMPLATE, RunConfig, RunConfigSpec, validate_config)
 from environment import GridWorldEnv, save_gif
-from localization import get_state_probabilities, ViterbiAlgorithm
+from localization import get_state_probabilities, ViterbiAlgorithm, map_state_sequence
 
 def load_env(gridworld_dimensions=20, obstacle_ratio=0.4):
 	# we assume inputs have been validated with the config spec
@@ -138,9 +138,12 @@ def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'
 		frames.append(frame)
 
 	viterbi_state_ids = None
+	map_state_ids = None
 	if not dummy:
 		# Backtrack once at the end to recover the most likely path.
 		viterbi_state_ids = viterbi.backtrack() # list length T (num_steps)
+		# Compute MAP-from-marginals path with adjacency constraints.
+		map_state_ids = map_state_sequence(probs_history=probs_history, model_info=model_info) # list length T
 
 	# save frames
 	results_save_path = path.join(results_dir, experiment_name)
@@ -163,6 +166,15 @@ def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'
 		)
 		viterbi_path = path.join(results_save_path, 'viterbi_path.png')
 		Image.fromarray(viterbi_img.astype(np.uint8)).save(viterbi_path)
+		# Render and save a MAP-only map (no heatmap).
+		map_img = env.render_gridworld(
+			state_probabilities=None,
+			map_state_ids=map_state_ids,
+			map_prefix_len=None,
+			draw_map_labels=True
+		)
+		map_path = path.join(results_save_path, 'map_path.png')
+		Image.fromarray(map_img.astype(np.uint8)).save(map_path)
 
 	# save animation for README
 	figures_save_path = 'figures'
@@ -185,7 +197,7 @@ def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'
 			base_env.cur_step = k + 1
 			# Draw the Viterbi path growing with time.
 			prefix_len = k + 1
-			frame_k = env.render(
+			frame_k = base_env.render(
 				state_probabilities=probs_history[:k+1], # list length k+1, each (num_states,)
 				viterbi_state_ids=viterbi_state_ids,      # list length T
 				viterbi_prefix_len=prefix_len,
@@ -195,6 +207,25 @@ def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'
 
 		viterbi_gif_path = path.join(figures_save_path, experiment_name + '_viterbi.gif')
 		save_gif(frames_viterbi, save_to_path=viterbi_gif_path)
+		# Build a third animation with MAP overlay on the heatmap frames.
+		frames_map = []
+		for k in range(len(obs_history)):
+			# Restore simulator state for frame k.
+			base_env.agent_pos = base_env.agent_pos_history[k].copy().astype(np.int32) # (2,)
+			base_env.sensor_obs = np.array(obs_history[k], dtype=np.int8)              # (4,)
+			base_env.cur_step = k + 1
+			# Draw the MAP path growing with time.
+			prefix_len = k + 1
+			frame_k = base_env.render(
+				state_probabilities=probs_history[:k+1], # list length k+1, each (num_states,)
+				map_state_ids=map_state_ids,              # list length T
+				map_prefix_len=prefix_len,
+				draw_map_labels=True
+			)
+			frames_map.append(frame_k)
+
+		map_gif_path = path.join(figures_save_path, experiment_name + '_map.gif')
+		save_gif(frames_map, save_to_path=map_gif_path)
 	return gif_result_save_path
 
 

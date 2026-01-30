@@ -351,7 +351,7 @@ class GridWorldEnv(gym.Env):
 		obs_lookup = self.observation_id_lookup
 		state_lookup = self.transition_matrix_reverse_lookup
 		prob_errors = [0, 0.05, 0.4]  # probability of sensor error
-		pe = prob_errors[1]  
+		pe = prob_errors[2]  
   
 		def compute_hamming_distance(
 			robot_obs: np.array, 
@@ -641,13 +641,17 @@ class GridWorldEnv(gym.Env):
 			return self._render_frame( **kwargs)
 	
 	def _render_frame(self, state_probabilities=None, suppress_plot_display=True,
-					  viterbi_state_ids=None, viterbi_prefix_len=None, draw_viterbi_labels=True):
-		# Render gridworld with optional Viterbi path overlay.
+					  viterbi_state_ids=None, viterbi_prefix_len=None, draw_viterbi_labels=True,
+					  map_state_ids=None, map_prefix_len=None, draw_map_labels=True):
+		# Render gridworld with optional Viterbi/MAP path overlays.
 		gridworld_render = self.render_gridworld(
 			state_probabilities=state_probabilities,
 			viterbi_state_ids=viterbi_state_ids,
 			viterbi_prefix_len=viterbi_prefix_len,
-			draw_viterbi_labels=draw_viterbi_labels
+			draw_viterbi_labels=draw_viterbi_labels,
+			map_state_ids=map_state_ids,
+			map_prefix_len=map_prefix_len,
+			draw_map_labels=draw_map_labels
 		)
 		observation_render = self.render_observation()
 		frame = self.get_frame(gridworld_render, observation_render, suppress_plot_display=suppress_plot_display)
@@ -656,8 +660,11 @@ class GridWorldEnv(gym.Env):
 	def render_gridworld(self, state_probabilities=None, prob_threshold=1e-8,
 						 viterbi_state_ids: Optional[List[int]] = None,
 						 viterbi_prefix_len: Optional[int] = None,
-						 draw_viterbi_labels: bool = True):
-		''' create image of the gridworld with optional state probabilities and Viterbi path'''
+						 draw_viterbi_labels: bool = True,
+						 map_state_ids: Optional[List[int]] = None,
+						 map_prefix_len: Optional[int] = None,
+						 draw_map_labels: bool = True):
+		''' create image of the gridworld with optional state probabilities and Viterbi/MAP paths'''
 
 		cur_state_prob = None
 
@@ -750,6 +757,32 @@ class GridWorldEnv(gym.Env):
 					width=4,
 				)
 
+		# draw MAP path if provided (state ids only).
+		map_pts = None
+		if map_state_ids is not None and len(map_state_ids) > 0:
+			# map_state_ids: list length T (num_steps), each element is a state id.
+			# Clamp prefix length if provided.
+			if map_prefix_len is None:
+				map_prefix = len(map_state_ids)
+			else:
+				map_prefix = max(1, min(int(map_prefix_len), len(map_state_ids)))
+
+			# Convert state ids to xy positions using the cached lookup.
+			map_xy = [self.transition_matrix_lookup[state_id] for state_id in map_state_ids[:map_prefix]] # list length map_prefix, each (2,)
+			# Convert cell coordinates to pixel centers.
+			map_pts = [((pos[0] + 0.5) * pix_square_size,
+						(pos[1] + 0.5) * pix_square_size) for pos in map_xy] # list length map_prefix, each (2,)
+
+		if map_pts is not None and len(map_pts) > 0:
+			if len(map_pts) >= 2:
+				pygame.draw.lines(
+					surface=canvas,
+					color=(0, 128, 0),
+					closed=False,
+					points=map_pts,
+					width=4,
+				)
+
 		# draw robot
 		pygame.draw.circle(
 			surface=canvas,
@@ -789,6 +822,25 @@ class GridWorldEnv(gym.Env):
 			f_surf = pygame.transform.flip(f_surf, False, True)
 			start_center = viterbi_pts[0]
 			end_center = viterbi_pts[-1]
+			s_rect = s_surf.get_rect(center=start_center)
+			f_rect = f_surf.get_rect(center=end_center)
+			canvas.blit(s_surf, s_rect)
+			canvas.blit(f_surf, f_rect)
+
+		# Draw start/end labels on top of the grid for MAP path visibility.
+		if draw_map_labels and map_pts is not None and len(map_pts) > 0:
+			# Initialize font subsystem if needed.
+			if not pygame.font.get_init():
+				pygame.font.init()
+			# Use a built-in font; size scales with the cell size.
+			font = pygame.font.Font(None, int(pix_square_size * 0.9))
+			s_surf = font.render("S", True, (0, 96, 0))
+			f_surf = font.render("F", True, (0, 96, 0))
+			# Flip glyphs vertically to counter the final vertical flip in the output image.
+			s_surf = pygame.transform.flip(s_surf, False, True)
+			f_surf = pygame.transform.flip(f_surf, False, True)
+			start_center = map_pts[0]
+			end_center = map_pts[-1]
 			s_rect = s_surf.get_rect(center=start_center)
 			f_rect = f_surf.get_rect(center=end_center)
 			canvas.blit(s_surf, s_rect)

@@ -55,17 +55,32 @@ Viterbi integration (utils.py)
 - A Viterbi-only map is saved to results/<run_name>/viterbi_path.png.
 - A second GIF with Viterbi overlay is saved to figures/<run_name>_viterbi.gif.
 
+MAP-from-marginals path (localization.py)
+- Implemented map_state_sequence(probs_history, model_info): a greedy backtrack using filtering marginals with adjacency constraints (not Viterbi).
+- Initialization: x_T = argmax(probs_history[T-1]) where probs_history[t] has shape (num_states,).
+- Backtracking: for each t, choose among predecessors with Tmat[:, curr] > 0 using the maximum marginal at time t.
+- Shapes:
+  - probs_history[t]: (num_states,)
+  - transition_matrix: (num_states, num_states)
+  - predecessors: (K,), masked: (K,)
+
 Rendering changes (environment.py)
 - render_gridworld now accepts viterbi_state_ids (length T) and viterbi_prefix_len to draw a red Viterbi path.
 - draw_viterbi_labels controls drawing dark-red "S"/"F" on top of the grid (after robot/grid lines).
 - The "S"/"F" glyphs are vertically flipped before blitting to counter the final image flip.
-- Fixed Viterbi GIF robot pose: the wrapper env kept the base env at the final pose during re-rendering, so the blue robot did not move.
-- GridWorldEnv now stores agent_pos_history (List[(2,)] length T) on reset/step, and the Viterbi GIF renderer sets base_env.agent_pos = agent_pos_history[k].copy() per frame (using env.unwrapped).
+- Fixed Viterbi GIF robot pose: env.agent_pos was stuck at the final pose during re-rendering, so the blue robot did not move.
+- GridWorldEnv now stores agent_pos_history (List[(2,)] length T) on reset/step, and the Viterbi/MAP GIF renderers set env.agent_pos = agent_pos_history[k].copy() per frame.
+- render_gridworld also accepts map_state_ids and map_prefix_len to draw a green MAP path (separate from Viterbi).
+
+MAP integration (utils.py)
+- run_sample now computes map_state_ids using map_state_sequence.
+- A MAP-only image is saved to results/<run_name>/map_path.png.
+- A MAP GIF with belief + robot + green path is saved to figures/<run_name>_map.gif.
 
 Files touched
 - localization.py: forward filter logic and comments.
-- utils.py: Viterbi online integration, viterbi_path.png, and Viterbi overlay GIF.
-- environment.py: Viterbi path rendering with labels and prefix-length support.
+- utils.py: Viterbi online integration plus MAP path image/GIF outputs.
+- environment.py: Viterbi path rendering with labels and prefix-length support, plus MAP path overlay.
 - student.md: updated documentation.
 
 How to run

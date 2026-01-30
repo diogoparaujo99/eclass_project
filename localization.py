@@ -182,6 +182,59 @@ class ViterbiAlgorithm:
 			path[t] = int(self.psi_history[t + 1][path[t + 1]])
 		return path
 
+def map_state_sequence(probs_history: List[np.ndarray], model_info: dict) -> List[int]:
+	'''
+	Greedy MAP-from-marginals path with adjacency constraint (not Viterbi).
+	- Choose x_T = argmax(probs_history[T-1])
+	- For t = T-1 down to 1: choose x_{t-1} from valid predecessors of x_t
+	'''
+	if probs_history is None or len(probs_history) == 0:
+		raise ValueError('probs_history must be a non-empty list of numpy arrays.')
+
+	num_states = model_info['num_states']
+	Tmat = model_info['transition_matrix'] # (num_states, num_states)
+
+	# Validate transition matrix shape.
+	if Tmat.shape != (num_states, num_states):
+		raise ValueError('transition_matrix must have shape ({}, {}), got {}'.format(num_states, num_states, Tmat.shape))
+
+	# Validate probabilities history.
+	for t, probs_t in enumerate(probs_history):
+		if not isinstance(probs_t, np.ndarray):
+			raise TypeError('probs_history[{}] must be a numpy array. Received: {}'.format(t, type(probs_t)))
+		if probs_t.shape != (num_states,):
+			raise ValueError('probs_history[{}] must have shape ({},), got {}'.format(t, num_states, probs_t.shape))
+		if np.any(probs_t < 0):
+			raise ValueError('probs_history[{}] contains negative probabilities'.format(t))
+		if not np.isfinite(probs_t).all():
+			raise ValueError('probs_history[{}] contains non-finite values'.format(t))
+		if not np.isclose(probs_t.sum(), 1.0, atol=1e-5):
+			raise ValueError('probs_history[{}] must sum to 1 within tolerance'.format(t))
+
+	T_len = len(probs_history)
+	path = [0] * T_len # length T
+
+	# last_belief: (num_states,)
+	last_belief = probs_history[-1]
+	path[T_len - 1] = int(np.argmax(last_belief))
+
+	# Backtrack with adjacency constraints using incoming neighbors.
+	for t in range(T_len - 2, -1, -1):
+		curr = path[t + 1]
+		# predecessors: (K,)
+		predecessors = np.where(Tmat[:, curr] > 0)[0]
+		prev_belief = probs_history[t] # (num_states,)
+		if predecessors.size == 0:
+			# Fallback: no valid predecessor, use marginal argmax.
+			path[t] = int(np.argmax(prev_belief))
+			continue
+		# masked: (K,)
+		masked = prev_belief[predecessors]
+		best_k = int(np.argmax(masked))
+		path[t] = int(predecessors[best_k])
+
+	return path
+
 ## -------------------------------------------------
 
 def  _get_dummy_probs(priviledged_info, model_info, observation_history, 
