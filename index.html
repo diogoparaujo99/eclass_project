@@ -28,21 +28,16 @@
 <body>
 	<div id="container">
 		<select id="directorySelect" onchange="changeDirectory()">
+            <option value="exp13-pe-0.05-grid-N20__obstacles-0.2__maxsteps-100__policy-random__dummy-False">exp13-pe-0.05-grid-N20__obstacles-0.2__maxsteps-100__policy-random__dummy-False</option>
+            <option value="exp13-pe-0.4-grid-N20__obstacles-0.2__maxsteps-100__policy-random__dummy-False">exp13-pe-0.4-grid-N20__obstacles-0.2__maxsteps-100__policy-random__dummy-False</option>
             <option value="grid-N20__obstacles-0.0__maxsteps-100__policy-random__dummy-False">grid-N20__obstacles-0.0__maxsteps-100__policy-random__dummy-False</option>
-            <option value="grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False">grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False</option>
             <option value="grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False-viterbi1">grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False-viterbi1</option>
             <option value="grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False-viterbi2">grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False-viterbi2</option>
-            <option value="grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False-viterbi3">grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False-viterbi3</option>
-            <option value="grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False4">grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False4</option>
-            <option value="grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False5">grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False5</option>
-            <option value="grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False6">grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False6</option>
-            <option value="grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-True">grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-True</option>
+            <option value="grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False11-pe4">grid-N20__obstacles-0.1__maxsteps-100__policy-random__dummy-False11-pe4</option>
+            <option value="grid-N20__obstacles-0.2__maxsteps-100__policy-random__dummy-False12-pe4">grid-N20__obstacles-0.2__maxsteps-100__policy-random__dummy-False12-pe4</option>
             <option value="grid-N20__obstacles-0.3__maxsteps-100__policy-random__dummy-False10-pe0">grid-N20__obstacles-0.3__maxsteps-100__policy-random__dummy-False10-pe0</option>
             <option value="grid-N20__obstacles-0.3__maxsteps-100__policy-random__dummy-False8">grid-N20__obstacles-0.3__maxsteps-100__policy-random__dummy-False8</option>
             <option value="grid-N20__obstacles-0.3__maxsteps-100__policy-random__dummy-False9-pe4">grid-N20__obstacles-0.3__maxsteps-100__policy-random__dummy-False9-pe4</option>
-            <option value="grid-N20__obstacles-0.5__maxsteps-100__policy-random__dummy-False7">grid-N20__obstacles-0.5__maxsteps-100__policy-random__dummy-False7</option>
-            <option value="grid-N30__obstacles-0.3__maxsteps-100__policy-random__dummy-False">grid-N30__obstacles-0.3__maxsteps-100__policy-random__dummy-False</option>
-            <option value="grid-N30__obstacles-0.5__maxsteps-100__policy-random__dummy-False">grid-N30__obstacles-0.5__maxsteps-100__policy-random__dummy-False</option>
 		</select>
 		<div class="controls">
 			<button onclick="prevFrame()">Previous</button>
@@ -53,10 +48,10 @@
 			<button onclick="toggleReset()">Reset</button>
 		</div>
 	</div>
-	<img id="sequence" src="results/grid-N20__obstacles-0.0__maxsteps-100__policy-random__dummy-False/frame-0.png">
+	<img id="sequence" src="results/exp13-pe-0.05-grid-N20__obstacles-0.2__maxsteps-100__policy-random__dummy-False/frame-0.png">
 
 	<script>
-		let currentDirectory = "grid-N20__obstacles-0.0__maxsteps-100__policy-random__dummy-False"; // initial directory
+		let currentDirectory = "exp13-pe-0.05-grid-N20__obstacles-0.2__maxsteps-100__policy-random__dummy-False"; // initial directory
 		let numFrames = 0;
 		let currentFrame = 0;
 		let isPlaying = false;

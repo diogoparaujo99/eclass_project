@@ -77,6 +77,11 @@ MAP integration (utils.py)
 - A MAP-only image is saved to results/<run_name>/map_path.png.
 - A MAP GIF with belief + robot + green path is saved to figures/<run_name>_map.gif.
 
+Sensor error probability (pe)
+- Added RunConfig.pe (default 0.4) with allowed values {0.0, 0.05, 0.4}.
+- The environment now stores self.pe and uses it in calculate_observation_matrix.
+- utils.py threads run_data.pe into the GridWorldEnv constructor so each run can set pe.
+
 Files touched
 - localization.py: forward filter logic and comments.
 - utils.py: Viterbi online integration plus MAP path image/GIF outputs.

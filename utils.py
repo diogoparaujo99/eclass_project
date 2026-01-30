@@ -21,12 +21,12 @@ from config import (HTML_TEMPLATE, RunConfig, RunConfigSpec, validate_config)
 from environment import GridWorldEnv, save_gif
 from localization import get_state_probabilities, ViterbiAlgorithm, map_state_sequence
 
-def load_env(gridworld_dimensions=20, obstacle_ratio=0.4):
+def load_env(gridworld_dimensions=20, obstacle_ratio=0.4, pe=0.4):
 	# we assume inputs have been validated with the config spec
 
 	env_config = {
 	'name': 'GridWorld-v0',
-	'config': (GridWorldEnv, {'N':gridworld_dimensions, 'obstacle_ratio':obstacle_ratio})
+	'config': (GridWorldEnv, {'N':gridworld_dimensions, 'obstacle_ratio':obstacle_ratio, 'pe':pe})
 	}
 	
 	register(id=env_config['name'], entry_point=env_config['config'][0], kwargs=env_config['config'][1])
@@ -76,7 +76,7 @@ def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'
 		print('WARNING: Using dummy get_state_probabilities(). You must implement your own.')
 	
 	# load environment 
-	env = load_env(gridworld_dimensions, obstacle_ratio)
+	env = load_env(gridworld_dimensions, obstacle_ratio, pe=run_data.pe)
 
 	# generate a new world
 	observation, priviledged_info, model_info = env.reset()

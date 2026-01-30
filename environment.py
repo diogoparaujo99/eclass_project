@@ -90,7 +90,7 @@ class Observations(Enum):
 
 class GridWorldEnv(gym.Env):
 	metadata = {'render_modes':['rgb_array']}
-	def __init__(self, N: int = 5, obstacle_ratio=0.3, render_mode='rgb_array'):
+	def __init__(self, N: int = 5, obstacle_ratio=0.3, pe: float = 0.05, render_mode='rgb_array'):
 		'''
 		Gridworld is assumed to be NxN, entities modeled are the robot (agent) and walls (obstacles). 
 		This class encapsulates:
@@ -103,6 +103,10 @@ class GridWorldEnv(gym.Env):
 		# the size of the NxN grid
 		self.N = N
 		self.obstacle_ratio = obstacle_ratio 
+		# pe: sensor error probability, must be one of {0.0, 0.05, 0.4}
+		if pe not in (0.0, 0.05, 0.4):
+			raise ValueError('pe must be one of {0.0, 0.05, 0.4}, got {}'.format(pe))
+		self.pe = pe
 
 		# observation space: dict of agent's position and sensor observations
 		self.observation_space = gym.spaces.MultiBinary(4) # binary array corresponding to NESW obstacle detection
@@ -350,8 +354,8 @@ class GridWorldEnv(gym.Env):
 		obstacle_set = {tuple(pos.tolist()) for pos in self.all_obstacle_pos}
 		obs_lookup = self.observation_id_lookup
 		state_lookup = self.transition_matrix_reverse_lookup
-		prob_errors = [0, 0.05, 0.4]  # probability of sensor error
-		pe = prob_errors[2]  
+		# pe: sensor error probability (configured per run)
+		pe = self.pe
   
 		def compute_hamming_distance(
 			robot_obs: np.array, 

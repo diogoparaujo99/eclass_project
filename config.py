@@ -14,6 +14,7 @@ class RunConfig:
 	robot_policy: Agent = Random()
 	dummy: bool = True # set False when using your method
 	init_prob_mode: Literal['uniform', 'your-mode'] = 'uniform'
+	pe: float = 0.05 # sensor error probability, must be one of {0.0, 0.05, 0.4}
 
 '''
 config Spec for running simulation
@@ -29,20 +30,26 @@ class RunConfigSpec:
 	robot_policy: Type = Agent
 	init_prob_mode: Set[str] = field(default_factory=set)
 	# init_prob_mode: Set[str] = {'uniform'}
+	pe: Set[float] = field(default_factory=lambda: {0.0, 0.05, 0.4})
 
 '''
 config validation
 '''
 def validate_config(config: RunConfig, spec: RunConfigSpec):
 	''' config spec validation '''
+	# Allow passing the spec class; instantiate to resolve default_factory fields.
+	if isinstance(spec, type):
+		spec = spec()
 	params_to_check_group_0 = ['gridworld_dimensions', 'obstacle_ratio', 'max_steps']
 	for p in params_to_check_group_0:
 		_type_validator(config, spec, p)
 		_range_validator(config, spec, p)
 	
-	params_to_check_group_1 = ['dummy', 'robot_policy']
+	params_to_check_group_1 = ['dummy', 'robot_policy', 'pe']
 	for p in params_to_check_group_1:
 		_type_validator(config, spec, p)
+		if p == 'pe':
+			_allowed_set_validator(config, spec, p)
 
 	return True
 
@@ -66,12 +73,28 @@ def _type_validator(config: RunConfig, spec: RunConfigSpec, param: str):
 	
 	if isinstance(expected_type, tuple) and len(expected_type) == 3:
 		expected_type = expected_type[2]
+	elif isinstance(expected_type, set):
+		# infer element type for allowed-set specs
+		if expected_type:
+			expected_type = type(next(iter(expected_type)))
+		else:
+			return True
 
 	if not isinstance(config_value, expected_type):
 		raise TypeError(
 			'Config Error: {} value must be of type {}, but got {}.'.format(param, expected_type.__name__, type(config_value).__name__ ) 
 			)
 
+def _allowed_set_validator(config: RunConfig, spec: RunConfigSpec, param: str):
+	''' validate value is in allowed set '''
+	spec_set = getattr(spec, param)
+	config_value = getattr(config, param)
+	if not isinstance(spec_set, set):
+		raise TypeError('Config Error: {} spec must be a set of allowed values.'.format(param))
+	if spec_set and config_value not in spec_set:
+		raise ValueError(
+			'Config Error: {} value of {} is not in allowed set {}.'.format(param, config_value, spec_set)
+		)
 
 def make_config_markdown(config: RunConfig, spec: RunConfigSpec) -> str:
 	''' automatically generate a markdown table for documentation '''
@@ -92,9 +115,14 @@ def make_config_markdown(config: RunConfig, spec: RunConfigSpec) -> str:
 			dtype = t.__name__
 			value_range = '{}-{}'.format(min_val, max_val)
 
-		# when spec is a set of allowed strings
+		# when spec is a set of allowed values
 		elif isinstance(spec_val, set):
-			dtype = 'str' # this is a string mode name
+			if spec_val and all(isinstance(v, float) for v in spec_val):
+				dtype = 'float'
+			elif spec_val and all(isinstance(v, int) for v in spec_val):
+				dtype = 'int'
+			else:
+				dtype = 'str'
 			if spec_val:
 				# show allowed options, e.g. {'uniform'}
 				value_range = '{{{}}}'.format(', '.join(sorted(repr(v) for v in spec_val)))
