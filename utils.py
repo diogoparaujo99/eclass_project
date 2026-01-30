@@ -33,11 +33,14 @@ def load_env(gridworld_dimensions=20, obstacle_ratio=0.4, pe=0.4):
 	env = gym.make(env_config['name'], disable_env_checker=True)
 	return env
 
-def init_probabilities(num_states: int, 
-					   mode: Literal['uniform', 'your-mode'] = 'uniform') -> np.ndarray:
+def init_probabilities(num_states: int,
+					   mode: Literal['uniform', 'center'] = 'uniform',
+					   grid_shape=None,
+					   state_id_to_xy=None) -> np.ndarray:
 	'''
-	supported initialization modes: 
+	supported initialization modes:
 	- uniform: uniform probability across all states
+	- center: 2D Gaussian centered at grid center (fixed sigma = gridsize / 4)
 
 	return:
 		- initial state probs, shape (num_states,), where num_states is the N*N of the gridworld
@@ -47,15 +50,48 @@ def init_probabilities(num_states: int,
 	if mode == 'uniform':
 		init_probs = np.full(num_states, 1.0 / num_states, dtype=float)
 		assert np.allclose(np.sum(init_probs), 1), 'initial probabilities do not sum to one'
-	elif mode == 'your-mode':
-		raise NotImplementedError('mode {} is not implemented.'.format(mode))
-	else: 
+
+	elif mode == 'center':
+		# Center-biased initialization using fixed 2D Gaussian
+		if grid_shape is None or state_id_to_xy is None:
+			raise ValueError('center mode requires grid_shape and state_id_to_xy')
+
+		# Calculate grid center
+		center_x = grid_shape[0] / 2.0
+		center_y = grid_shape[1] / 2.0
+
+		# Fixed sigma: scales with grid size (gridsize / 4 gives good concentration)
+		sigma = grid_shape[0] / 4.0
+
+		# Initialize probabilities array
+		init_probs = np.zeros(num_states, dtype=float)
+
+		# For each state, compute Gaussian probability based on distance from center
+		for state_id in range(num_states):
+			if state_id in state_id_to_xy:
+				pos = state_id_to_xy[state_id]
+				# Calculate Euclidean distance from center
+				dist = np.sqrt((pos[0] - center_x)**2 + (pos[1] - center_y)**2)
+				# Gaussian function: exp(-dist² / (2σ²))
+				init_probs[state_id] = np.exp(-(dist**2) / (2 * sigma**2))
+
+		# Normalize to sum to 1
+		normalizer = init_probs.sum()
+		if normalizer < 1e-12:
+			print('Warning: Zero probability mass, falling back to uniform')
+			init_probs = np.full(num_states, 1.0 / num_states, dtype=float)
+		else:
+			init_probs = init_probs / normalizer
+
+		assert np.allclose(np.sum(init_probs), 1), 'initial probabilities do not sum to one'
+
+	else:
 		raise NotImplementedError('mode {} is not currently supported.'.format(mode))
-	
+
 	assert np.allclose(np.sum(init_probs), 1), 'initial probabilities do not sum to one'
 	return init_probs
 
-def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'):
+def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/', return_metrics=False):
 	
 	# validate inputs 
 	try:
@@ -81,9 +117,12 @@ def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'
 	# generate a new world
 	observation, priviledged_info, model_info = env.reset()
 	
-	# init state probabilities 
+	# init state probabilities
 	num_states = model_info['num_states']
-	init_probs = init_probabilities(num_states=num_states, mode=init_prob_mode)
+	init_probs = init_probabilities(num_states=num_states,
+									mode=init_prob_mode,
+									grid_shape=model_info.get('grid_shape'),
+									state_id_to_xy=model_info.get('state_id_to_xy'))
 
 	obs_history = [observation]
 	probs_history = [init_probs]
@@ -226,6 +265,34 @@ def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'
 
 		map_gif_path = path.join(figures_save_path, experiment_name + '_map.gif')
 		save_gif(frames_map, save_to_path=map_gif_path)
+
+	# Calculate final localization metrics if requested
+	if return_metrics:
+		# Get true final position
+		true_position = priviledged_info['agent_position']  # (x, y) numpy array
+
+		# Get estimated final position (argmax of final belief)
+		final_belief = probs_history[-1]  # shape (num_states,)
+		estimated_state_id = np.argmax(final_belief)
+		estimated_position = model_info['state_id_to_xy'][estimated_state_id]  # numpy array (x, y)
+
+		# Calculate L1 distance (Manhattan)
+		l1_distance = float(np.abs(true_position[0] - estimated_position[0]) +
+		                   np.abs(true_position[1] - estimated_position[1]))
+
+		# Calculate L2 distance (Euclidean)
+		l2_distance = float(np.sqrt((true_position[0] - estimated_position[0])**2 +
+		                           (true_position[1] - estimated_position[1])**2))
+
+		metrics = {
+			'true_position': true_position,
+			'estimated_position': estimated_position,
+			'l1_distance': l1_distance,
+			'l2_distance': l2_distance,
+			'gif_path': gif_result_save_path
+		}
+		return metrics
+
 	return gif_result_save_path
 
 
