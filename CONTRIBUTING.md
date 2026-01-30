@@ -1,4 +1,4 @@
-# Contributing to Localization with HMMs Project
+# Contributing to This Project
 
 Thank you for your interest in contributing to this project! This guide will help you understand how to contribute effectively.
 
@@ -34,9 +34,9 @@ You can disable automatic branch deletion for the entire repository:
 2. Click on **Settings** (you need admin access)
 3. Navigate to **General** settings
 4. Scroll down to the **Pull Requests** section
-5. **Uncheck** the option: **"Automatically delete head branches"**
+5. **Ensure** the option **"Automatically delete head branches"** is **unchecked**
 
-With this setting disabled, branches will NOT be automatically deleted after merging pull requests. Note: This setting applies to the entire repository and affects all future pull requests.
+With this setting disabled, GitHub will not automatically prompt or suggest branch deletion after merging pull requests. Note: This setting applies to the entire repository and affects all future pull requests.
 
 ### For Pull Request Authors
 
@@ -66,13 +66,14 @@ git checkout main
 # Pull the latest changes
 git pull origin main
 
-# Merge the feature branch without deleting it
+# Merge the feature branch with a merge commit (--no-ff prevents fast-forward)
 git merge --no-ff feature-branch-name
 
 # Push the merge to remote
 git push origin main
 
-# The feature branch remains available locally and remotely
+# The feature branch remains available both locally and remotely
+# (it won't be deleted automatically)
 ```
 
 The feature branch will still exist both locally and on GitHub after this merge.
