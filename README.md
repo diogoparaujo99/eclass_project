@@ -12,7 +12,7 @@ Final project for the Estimation & Classification course at Instituto Superior T
 
 Explore example results in the interactive display: [https://alcedok.github.io/IST-EC-course-project/](https://alcedok.github.io/IST-EC-course-project/). 
 
-If you find any problems/bugs or are interested in extending the code: open an issue, fork the repository and create a merge request with a description of the changes. See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on contributing and merging pull requests.
+If you find any problems/bugs or are interested in extending the code: open an issue, fork the repository and create a pull request with a description of the changes. See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on contributing and merging pull requests.
 
 ## Features:
 - Random generation and simulation of partially observable gridworlds implemented with [Farama's Gym Environment](https://gymnasium.farama.org/).

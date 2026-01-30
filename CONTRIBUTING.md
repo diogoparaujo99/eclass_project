@@ -16,15 +16,15 @@ When merging a pull request to the main branch, GitHub provides an option to del
 
 ### For Repository Maintainers
 
-#### Method 1: Uncheck the Delete Option (Recommended)
+#### Method 1: Don't Delete the Branch After Merge (Recommended)
 
 1. Navigate to the pull request you want to merge
 2. Click the **"Merge pull request"** button
-3. **IMPORTANT**: Before confirming, look for the checkbox that says **"Delete branch after merge"**
-4. **Uncheck this box** if you want to keep the branch
-5. Confirm the merge by clicking **"Confirm merge"**
+3. Click **"Confirm merge"** to complete the merge
+4. **IMPORTANT**: After the merge is complete, you'll see a button that says **"Delete branch"**
+5. **Do NOT click this button** if you want to keep the branch
 
-The branch will remain available after the merge is complete.
+The branch will remain available unless you explicitly click the "Delete branch" button.
 
 #### Method 2: Configure Repository Settings
 
@@ -35,9 +35,8 @@ You can disable automatic branch deletion for the entire repository:
 3. Navigate to **General** settings
 4. Scroll down to the **Pull Requests** section
 5. **Uncheck** the option: **"Automatically delete head branches"**
-6. Click **Save** if needed
 
-With this setting disabled, branches will NOT be automatically deleted after merging pull requests.
+With this setting disabled, branches will NOT be automatically deleted after merging pull requests. Note: This setting applies to the entire repository and affects all future pull requests.
 
 ### For Pull Request Authors
 
