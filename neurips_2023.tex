@@ -28,6 +28,8 @@
 \usepackage{hyperref}       % hyperlinks
 \usepackage{url}            % simple URL typesetting
 \usepackage{booktabs}       % professional-quality tables
+\usepackage{graphicx}       % images
+\usepackage{amsmath}        % math
 \usepackage{amsfonts}       % blackboard math symbols
 \usepackage{nicefrac}       % compact symbols for 1/2, etc.
 \usepackage{microtype}      % microtypography
@@ -40,7 +42,7 @@
 
 
 
-\title{Multi-modal Brain Tumor Segmentation \\ \small DSL Project Proposal}
+\title{Robot Self-localization}
 
 % The \author macro works with any number of authors. There are two commands
 % used to separate the names and addresses of multiple authors: \And and \AND.
@@ -55,25 +57,8 @@
   Diogo Araújo \\
   \texttt{ist193906} \\
   \And
-  Gonçalo Matos\\
-  \texttt{ist175150} \\
-  % examples of more authors
-   \And
-   Marc Golub \\
-   \texttt{ist176084} \\
-   \AND
-   Sofia Monteiro \\
-   \texttt{ist186751} \\
-  % \And
-  % Coauthor \\
-  % Affiliation \\
-  % Address \\
-  % \texttt{email} \\
-  % \And
-  % Coauthor \\
-  % Affiliation \\
-  % Address \\
-  % \texttt{email} \\
+  Jorge Cerejo \\
+  \texttt{ist189815} \\
 }
 
 
@@ -92,100 +77,85 @@
 %\end{abstract}
 
 
-\subsection{Greedy Neighborhood-Aware MAP from Filtering Marginals}
+\section{Introduction}
+This project was implemented in the scope of the graduate course of Estimation and Classification.
+We model robot self-localization in a GridWorld as a Hidden Markov Model (HMM): Section~1 defines the state space, initial distribution, transition model, and observation model; Section~2 describes the online filtering recursion; Section~3 compares Viterbi decoding against a neighbor-restricted MAP-from-marginals heuristic; Section~4 concludes and outlines future work.
 
-Let $x_t \in \{0,1,\dots,N-1\}$ denote the hidden state (grid cell id) at time $t$, and let
-\[
-\boldsymbol{\pi}_t \in \mathbb{R}^N,\qquad \pi_t(i)=\Pr(x_t=i \mid o_{1:t})
-\]
-be the \emph{filtering marginal} at time $t$ (in code: \texttt{probs\_history[t-1]}).
+\section{HMM Formulation}
+We consider an $N\times N$ grid map and define a discrete state $x_t$ as the robot cell index, with state-space size $|\mathcal{S}|=N^2$.
+At each time step, the robot receives a 4-bit binary observation $o_t=(o^N,o^E,o^S,o^W)\in\{0,1\}^4$, where $0$ indicates an obstacle/boundary in that direction and $1$ indicates a free direction.
 
-Let $A \in \mathbb{R}^{N\times N}$ be the transition matrix with entries
-$A_{ij}=\Pr(x_t=j \mid x_{t-1}=i)$.
-Define the set of valid \emph{predecessors} of a state $j$ by
-\[
-\mathcal{N}^{-}(j) \;=\; \{\, i \in \{0,\dots,N-1\} \;:\; A_{ij} > 0 \,\}.
-\]
-Equivalently, define a binary predecessor mask vector for state $j$:
-\[
-\mathbf{m}(j) \in \{0,1\}^N,\qquad m_i(j)=\mathbb{I}[A_{ij}>0].
-\]
+\subsection{Initial Distribution}
+For global localization we use a uniform prior over all states, $\pi(i)=P(x_1=i)=1/N^2$.
 
-\paragraph{Objective and Motivation.}
-A full MAP estimate of the entire trajectory $\hat{x}_{1:T}$ under an HMM posterior is obtained by Viterbi decoding. Here we instead construct a \emph{greedy} path that is (i) consistent with the transition graph (grid neighborhood), and (ii) prefers states with high filtering marginals at each time. This yields an inexpensive, neighborhood-aware trajectory estimate derived from $\{\boldsymbol{\pi}_t\}_{t=1}^T$.
+\subsection{Transition Model}
+The motion model is a random walk with transition matrix $T$, where
+$T_{ij}=P(x_t=j\mid x_{t-1}=i)$ is uniform over the valid neighboring cells (e.g., in corridors/borders a cell can have three valid neighbors).
 
-\paragraph{Greedy Backtracking Rule.}
-We initialize the terminal state as the most probable marginal at time $T$:
+\subsection{Observation Model}
+The emission matrix $O$ has 16 symbols ($2^4$ possible 4-bit observations), with entries $O_{i,z}=P(o_t=z\mid x_t=i)$.
+We use an independent bit-flip sensor model with error probability $p_e$; letting $d_H(\cdot,\cdot)$ be the Hamming distance between the observed pattern and the deterministic map signature at state $i$,
 \[
-\hat{x}_T \;=\; \arg\max_{i \in \{0,\dots,N-1\}} \pi_T(i).
-\]
-Then for $t=T-1,T-2,\dots,1$ we choose the predecessor that maximizes the previous-time marginal
-among states that can transition into the already chosen successor:
-\[
-\hat{x}_t
-\;=\;
-\arg\max_{i \in \mathcal{N}^{-}(\hat{x}_{t+1})} \pi_t(i).
-\]
-In masked-vector form, this can be written as
-\[
-\hat{x}_t
-\;=\;
-\arg\max_{i \in \{0,\dots,N-1\}}
-\bigl(\pi_t(i)\, m_i(\hat{x}_{t+1})\bigr),
-\]
-i.e., an elementwise product between the marginal vector and the predecessor mask, followed by an $\arg\max$.
-
-\paragraph{Fallback (Optional).}
-If $\mathcal{N}^{-}(\hat{x}_{t+1})$ is empty (unexpected in a well-formed grid), one can fall back to the unconstrained marginal mode:
-\[
-\hat{x}_t \leftarrow \arg\max_i \pi_t(i).
+P(o_t\mid x_t=i)=(1-p_e)^{4-d_H}\,p_e^{d_H}.
 \]
 
-\paragraph{Remarks.}
-This method produces a transition-consistent trajectory while leveraging the filtering marginals. It is \emph{not} equivalent to the true MAP trajectory $\arg\max_{x_{1:T}}\Pr(x_{1:T}\mid o_{1:T})$ (which Viterbi computes), because it greedily optimizes each step under a local neighborhood constraint rather than optimizing the full sequence probability.
+\section{Filtering for Self-localization}
+Self-localization is a filtering problem, computing $P(x_t\mid o_{1:t})$ online.
+Let $p_t\in\mathbb{R}^{N^2}$ be the belief vector at time $t$ and let $b(o_t)\in\mathbb{R}^{N^2}$ be the emission-likelihood vector for $o_t$ (the corresponding column of $O$). The recursion is:
+\[
+\hat{p}_t=T^\top p_{t-1},\qquad
+p_t \propto b(o_t)\odot \hat{p}_t,
+\]
+followed by normalization.
 
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lccc}
+\toprule
+Map size & $p_e=0.0$ & $p_e=0.05$ & $p_e=0.4$ \\
+\midrule
+$20\times20$ & 1.8/1.7 & 2.4/2.2 & 11.4/9.6 \\
+$25\times25$ & 3.6/2.7 & 8.4/7.0 & 18.6/14.7 \\
+$30\times30$ & 3.2/2.6 & 5.4/4.6 & 16.4/12.9 \\
+\bottomrule
+\end{tabular}
+\caption{Effect of sensor error $p_e$ on final-step localization error. Each entry reports mean $L_1/L_2$ distance (Manhattan/Euclidean) between the true final position and the estimate $\arg\max p_T$ (mean over 5 runs; obstacle ratio 0.2; horizon 100).}
+\label{tab:pe-error}
+\end{table}
 
-\section{Problem description}\label{sec:intro}
+As expected, larger $p_e$ degrades the final position estimate.
+Even when filtering remains stable, the argmax estimate becomes less informative as observation likelihoods flatten with higher noise.
 
-Manual \textbf{segmentation} of brain tumors in Magnetic Resonance Imaging (MRI) is time consuming and labor-intensive. Neural networks --- namely the U-net architecture \cite{henry2021brain} -- have been instrumental for the development of automatic segmentation tools.  These networks are often trained on multiple imaging modalities, which correspond to different scanner settings in which the brain can be imaged. Each modality makes certain regions of the tumors more easily detectable than others. However, sometimes not all of the modalities are available for a given patient, limiting the applicability of these tools \cite{wang2023multimodal}. Acquiring multiple modalities is costly and time consuming, and the contrast injections that are necessary to acquire some of the modalities are contraindicated in certain patients (for example, patients with severe kidney failure) \cite{zhang2021toward}.
+\section{Most Likely State Sequence}
+Beyond pointwise filtering, we estimated a full trajectory $\hat{x}_{1:T}$.
+Viterbi decoding computes the most likely sequence under the HMM dynamics using a forward recursion (online $\delta_t$ and backpointers $\psi_t$) and a final backtrack.
+In addition, we implemented a greedy neighbor-restricted MAP-from-marginals path: starting from $\arg\max p_T$, it backtracks by selecting at each step the highest-probability predecessor among valid incoming neighbors in $T$.
 
-To address this challenge, we propose a deep learning framework capable of adapting to \textbf{missing} data for some of the \textbf{modalities}, that is, a neural network that can be used to make inferences either with all or only a subset of the modalities available.
-This will be a \textbf{practical} project where, in the end, we would like to answer the following research questions:
-% explore the possibility of training a neural network on multi-modal data in such a way that it can be used to make inferences either with all or only a subset of the modalities available.
+Empirically, the greedy MAP-from-marginals can appear more robust than Viterbi at high sensor noise.
+A plausible explanation is that high noise increases belief entropy and, with near-uniform transitions, many sequences have similar joint probability; in this regime, Viterbi tie-breaking in $\delta/\psi$ can lead to arbitrary path choices.
 
-\begin{itemize}
-    \item Can we train a single unified model that is able to process inputs with a variable number (1--4) of modalities?
-    \item Is it possible to drop some of the modalities during inference without sacrificing the performance too much? Which one(s)?
-\end{itemize}
+\begin{figure*}[t]
+\centering
+\begin{minipage}{0.49\textwidth}
+\centering
+\includegraphics[width=0.85\linewidth]{figures/viterbi_path.png}\\
+\small (a) Viterbi (red)
+\end{minipage}\hfill
+\begin{minipage}{0.49\textwidth}
+\centering
+\includegraphics[width=0.85\linewidth]{figures/map_path.png}\\
+\small (b) Greedy MAP-from-marginals (green)
+\end{minipage}
+\caption{Example state-sequence estimates on the same episode.}
+\label{fig:paths}
+\end{figure*}
 
-
-\section{Data}
-
-We will use the \textbf{BraTS 2021 public dataset} \cite{brats2021_website}, which is a multi-modal dataset comprising 1251 patients with four MRI modalities and ground truth segmentation labels offered by experts.
-%For each patient, four MRI modalities are provided: native (T1), post-contrast T1-weighted (T1Gd), T2-weighted (T2), and T2 Fluid Attenuated Inversion Recovery (T2-FLAIR). 
-%It is available at \url{https://www.med.upenn.edu/cbica/brats2021}.
-
-
-\section{Methodology}
-
-We plan to address this problem with the following incremental approach:
-
-\begin{enumerate}[label=\Roman*.]
-    \item Implement a U-Net architecture \cite{u-net} for tumor segmentation, following the methodology outlined in \cite{henry2021brain}. This model will serve as our baseline;\label{item:u-net_baseline}
-    \item Develop and implement a U-Net-based framework which handles missing modalities;\label{item:proposed_approach}
-    \item Explore the use of an architecture based on Vision Transformers \cite{vit}, which are capable of handling variable input lengths;\label{item:future_work}
-\end{enumerate}
-
-The segmentation performance of the models in \ref{item:proposed_approach} and \ref{item:future_work} will be compared against the baseline U-Net model in \ref{item:u-net_baseline}, using standard \textbf{metrics} for semantic segmentation tasks, such as Dice coefficient and Haussdorff distance \cite{henry2021brain}.
- %, Precision, and Recall.Ultimately, we want to find out the answers for the questions raised in the \ref{sec:intro}.
-
-% We intend to implement the U-net model as described in \cite{henry2021brain} and run it over our dataset, to serve as a baseline to later compare with our own models. Then, we will evaluate the results achieved by the models in 2. and 3. by comparing them with the baseline 1., using the metrics \textit{Dice loss}, \textit{Precision} and \textit{Recall}.
-
-
-
-\medskip
-
-\bibliography{bibliography}
+\section{Conclusion}
+We formulated robot self-localization as an HMM on a GridWorld and implemented the standard filtering recursion to maintain $P(x_t\mid o_{1:t})$ online; the table in Section~2 illustrates the expected impact of sensor noise on final-step accuracy.
+We also explored sequence estimation via Viterbi decoding and a neighbor-restricted MAP-from-marginals heuristic, noting that trajectory estimation is challenging when transitions are close to uniform and observations are noisy, which can make Viterbi sensitive to near-ties.
+Future work includes non-uniform priors, action-conditioned transition models, and controlled settings (e.g., simple pursuit dynamics as in a drone tracking scenario).
 
 
 
