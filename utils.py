@@ -268,25 +268,38 @@ def run_sample(experiment_name: str, run_data: RunConfig, results_dir='results/'
 
 	# Calculate final localization metrics if requested
 	if return_metrics:
-		# Get true final position
-		true_position = priviledged_info['agent_position']  # (x, y) numpy array
+		# true_position: (2,)
+		true_position = priviledged_info['agent_position']
 
-		# Get estimated final position (argmax of final belief)
-		final_belief = probs_history[-1]  # shape (num_states,)
-		estimated_state_id = np.argmax(final_belief)
-		estimated_position = model_info['state_id_to_xy'][estimated_state_id]  # numpy array (x, y)
+		# final_belief: (num_states,)
+		final_belief = probs_history[-1]
+		filter_state_id = int(np.argmax(final_belief))
+		filter_position = model_info['state_id_to_xy'][filter_state_id]  # (2,)
 
-		# Calculate L1 distance (Manhattan)
-		l1_distance = float(np.abs(true_position[0] - estimated_position[0]) +
-		                   np.abs(true_position[1] - estimated_position[1]))
+		# Use the Viterbi final state as the evaluation estimate (if available).
+		# viterbi_state_ids: list length T
+		if viterbi_state_ids is not None and len(viterbi_state_ids) > 0:
+			viterbi_final_state_id = int(viterbi_state_ids[-1])
+			viterbi_position = model_info['state_id_to_xy'][viterbi_final_state_id]  # (2,)
+		else:
+			# Fallback: use filtering argmax if Viterbi is unavailable.
+			viterbi_final_state_id = None
+			viterbi_position = filter_position
 
-		# Calculate L2 distance (Euclidean)
-		l2_distance = float(np.sqrt((true_position[0] - estimated_position[0])**2 +
-		                           (true_position[1] - estimated_position[1])**2))
+		# Compute distances between true final position and Viterbi final position.
+		l1_distance = float(np.abs(true_position[0] - viterbi_position[0]) +
+							np.abs(true_position[1] - viterbi_position[1]))
+		l2_distance = float(np.sqrt((true_position[0] - viterbi_position[0])**2 +
+									(true_position[1] - viterbi_position[1])**2))
 
 		metrics = {
 			'true_position': true_position,
-			'estimated_position': estimated_position,
+			# Backwards-compatible key used by demo.ipynb: this now refers to the Viterbi final position.
+			'estimated_position': viterbi_position,
+			'viterbi_position': viterbi_position,
+			'viterbi_state_id': viterbi_final_state_id,
+			'filter_position': filter_position,
+			'filter_state_id': filter_state_id,
 			'l1_distance': l1_distance,
 			'l2_distance': l2_distance,
 			'gif_path': gif_result_save_path
