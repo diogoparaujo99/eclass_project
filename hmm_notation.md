@@ -22,9 +22,9 @@ We distinguish two stochastic processes:
     
     $\mathcal{S} = {s_1, s_2, \dots, s_K}$
     
-    where each $s_i$ corresponds to a **free** grid cell. Thus:
+    where each $s_i$ corresponds to a grid cell. Thus:
     
-    $K = N^2 -$ #obstacles
+    $K = N^2
     
     The dynamics satisfy the first-order Markov property:
     
@@ -93,7 +93,7 @@ $$
 ⁍
 $$
 
-**Key implications:**
+**This formulation respects:**
 
 - $A$ is **row-stochastic**:
     
