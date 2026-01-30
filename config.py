@@ -13,7 +13,7 @@ class RunConfig:
 	max_steps: int = 100
 	robot_policy: Agent = Random()
 	dummy: bool = True # set False when using your method
-	init_prob_mode: Literal['uniform', 'your-mode'] = 'uniform'
+	init_prob_mode: Literal['uniform', 'center'] = 'uniform'
 	pe: float = 0.05 # sensor error probability, must be one of {0.0, 0.05, 0.4}
 
 '''
